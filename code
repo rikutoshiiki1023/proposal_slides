@@ -1,50 +1,50 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Search, 
-  BarChart3, 
-  PieChart, 
-  Building2, 
-  Home, 
-  ArrowRight, 
-  AlertCircle, 
+import React, { useState } from 'react';
+import {
+  Search,
+  BarChart3,
+  PieChart,
+  Building2,
+  Home,
   LayoutDashboard,
   CheckCircle2,
   TrendingUp,
   MapPin,
   RefreshCw,
-  Info,
   XCircle,
   Link as LinkIcon
 } from 'lucide-react';
 
 /**
  * SUUMOエリア分析・マーケットシェア可視化ツール
- * * 更新内容：
- * - モックデータを固定値（姫路市）から動的生成に変更し、入力値ごとに結果が変わるように修正
- * - エリア辞書に西宮市などを追加
- * - 分析結果に対象URLを表示し、都度検索していることを明示
+ *
+ * 更新内容：
+ * - モックデータ生成を廃止し、suumo-scraper-api への実APIリクエストに切り替え
+ * - /search-area でエリア名→SUUMOパスを動的検索
+ * - /analyze でエリア全体・企業別のスクレイピング＆集計をバックエンドで実行
  */
 
+// suumo-scraper-api の Render デプロイ先 URL
+const API_BASE_URL = 'https://suumo-scraping.onrender.com';
+
 const SHARE_LEVELS = [
-  { min: 0, max: 2.8, label: "シェア不足", desc: "市場における認知がほとんどない状態です。", color: "#94a3b8" },
-  { min: 2.81, max: 6.8, label: "拠点目標値", desc: "そのエリアに拠点を構えるための最低限の水準です。", color: "#60a5fa" },
-  { min: 6.81, max: 10.9, label: "存在目標値", desc: "ユーザーから「あの会社もあるな」と認知される水準です。", color: "#4ade80" },
-  { min: 10.91, max: 19.3, label: "影響目標値", desc: "貴社の動向がエリア全体の相場や動きに影響を与える水準です。", color: "#fbbf24" },
-  { min: 19.31, max: 26.1, label: "上位目標値", desc: "ランチェスター戦略において強者への第一歩となる水準です。", color: "#f97316" },
-  { min: 26.11, max: 41.7, label: "下限目標値", desc: "そのエリアで圧倒的な「強者」としての地位を確立しました。", color: "#ef4444" },
-  { min: 41.71, max: 100, label: "安定目標値", desc: "新規参入があっても動じない、絶対的な市場支配水準です。", color: "#a855f7" },
+  { min: 0,     max: 2.8,   label: "シェア不足",   desc: "市場における認知がほとんどない状態です。",                             color: "#94a3b8" },
+  { min: 2.81,  max: 6.8,   label: "拠点目標値",   desc: "そのエリアに拠点を構えるための最低限の水準です。",                     color: "#60a5fa" },
+  { min: 6.81,  max: 10.9,  label: "存在目標値",   desc: "ユーザーから「あの会社もあるな」と認知される水準です。",               color: "#4ade80" },
+  { min: 10.91, max: 19.3,  label: "影響目標値",   desc: "貴社の動向がエリア全体の相場や動きに影響を与える水準です。",           color: "#fbbf24" },
+  { min: 19.31, max: 26.1,  label: "上位目標値",   desc: "ランチェスター戦略において強者への第一歩となる水準です。",             color: "#f97316" },
+  { min: 26.11, max: 41.7,  label: "下限目標値",   desc: "そのエリアで圧倒的な「強者」としての地位を確立しました。",             color: "#ef4444" },
+  { min: 41.71, max: 100,   label: "安定目標値",   desc: "新規参入があっても動じない、絶対的な市場支配水準です。",               color: "#a855f7" },
 ];
 
-const getShareStatus = (share) => {
-  return SHARE_LEVELS.find(l => share >= l.min && share <= l.max) || SHARE_LEVELS[0];
-};
+const getShareStatus = (share) =>
+  SHARE_LEVELS.find(l => share >= l.min && share <= l.max) || SHARE_LEVELS[0];
 
 // --- サブコンポーネント ---
 
 const SummaryCard = ({ title, data, icon, color }) => {
   const status = getShareStatus(data.share);
   const colorMap = {
-    blue: "from-blue-500 to-indigo-600 shadow-blue-100",
+    blue:    "from-blue-500 to-indigo-600 shadow-blue-100",
     emerald: "from-emerald-500 to-teal-600 shadow-emerald-100"
   };
 
@@ -62,7 +62,7 @@ const SummaryCard = ({ title, data, icon, color }) => {
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-          <p className="text-[10px] font-bold text-slate-400 mb-1">エリア全体(U)</p>
+          <p className="text-[10px] font-bold text-slate-400 mb-1">エリア全体</p>
           <p className="text-lg font-black text-slate-800">{data.totalUnique}<span className="text-xs ml-0.5 text-slate-500 font-medium">件</span></p>
         </div>
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
@@ -76,7 +76,7 @@ const SummaryCard = ({ title, data, icon, color }) => {
           <span className="text-[10px] font-bold text-slate-400">シェア率</span>
           <span className="text-2xl font-black text-slate-800">{data.share}%</span>
         </div>
-        <div 
+        <div
           className="px-3 py-1 rounded-full text-[10px] font-bold text-white shadow-sm"
           style={{ backgroundColor: status.color }}
         >
@@ -95,13 +95,11 @@ const ShareGauge = ({ title, share }) => {
     <div className="space-y-4">
       <div className="flex items-end justify-between">
         <h4 className="font-bold text-slate-700 text-sm">{title}</h4>
-        <div className="text-right">
-          <p className="text-[20px] font-black" style={{ color: status.color }}>{share}%</p>
-        </div>
+        <p className="text-[20px] font-black" style={{ color: status.color }}>{share}%</p>
       </div>
 
       <div className="relative h-8 bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
-        <div 
+        <div
           className="h-full transition-all duration-1000 ease-out flex items-center justify-end px-3"
           style={{ width: `${progressWidth}%`, backgroundColor: status.color }}
         >
@@ -113,7 +111,7 @@ const ShareGauge = ({ title, share }) => {
           </div>
         ))}
       </div>
-      
+
       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
         <p className="text-[11px] text-slate-600 leading-relaxed">
           <span className="font-bold text-slate-800">診断:</span> {status.desc}
@@ -130,7 +128,7 @@ const SegmentBar = ({ label, share, count, color }) => (
       <span className="text-slate-400">{count}件 / <span className="text-slate-700">{share}%</span></span>
     </div>
     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-      <div 
+      <div
         className="h-full transition-all duration-1000"
         style={{ width: `${Math.min(share * 4, 100)}%`, backgroundColor: color }}
       ></div>
@@ -141,111 +139,110 @@ const SegmentBar = ({ label, share, count, color }) => (
 // --- メインアプリケーション ---
 
 export default function App() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [loadingStep, setLoadingStep] = useState("");
   const [analyzed, setAnalyzed] = useState(false);
-  const [error, setError] = useState("");
-  
-  // 初期値を完全に空に設定
-  const [inputs, setInputs] = useState({
-    areaName: "",
-    condoUrl: "",
-    houseUrl: ""
-  });
-  
+  const [error, setError]       = useState("");
+
+  const [inputs, setInputs] = useState({ areaName: "", condoUrl: "", houseUrl: "" });
+  const [foundAreaPath, setFoundAreaPath] = useState("");
   const [data, setData] = useState(null);
 
-  // エリア名入力に応じたパス特定辞書
-  const estimatedPath = useMemo(() => {
-    if (!inputs.areaName) return "未入力";
-    
-    // area_URL.csv に基づく主要エリアのマッピング（一部抜粋）
-    const areaKeywords = [
-      { key: "姫路", path: "hyogo/sc_himeji" },
-      { key: "西宮", path: "hyogo/sc_nishinomiya" },
-      { key: "神戸市中央", path: "hyogo/sc_kobeshichuo" },
-      { key: "明石", path: "hyogo/sc_akashi" },
-      { key: "加古川", path: "hyogo/sc_kakogawa" },
-      { key: "尼崎", path: "hyogo/sc_amagasaki" },
-      { key: "那覇", path: "okinawa/sc_naha" },
-      { key: "目黒", path: "tokyo/sc_meguro" },
-      { key: "札幌市中央", path: "hokkaido_/sc_sapporoshichuo" },
-      { key: "大阪市北", path: "osaka/sc_osakashikita" }
-    ];
+  const showError = (msg) => {
+    setError(msg);
+    setTimeout(() => setError(""), 6000);
+  };
 
-    const hit = areaKeywords.find(item => inputs.areaName.includes(item.key));
-    // 見つからない場合はダミーパスを生成して「検索した感」を出す
-    return hit ? hit.path : `search/sc_${inputs.areaName}`;
-  }, [inputs.areaName]);
-
-  const handleRun = () => {
-    // バリデーション：エリア名と少なくとも1つのURLが必要
+  const handleRun = async () => {
     if (!inputs.areaName || (!inputs.condoUrl && !inputs.houseUrl)) {
-      setError("エリア名と、少なくとも1つの企業URLを入力してください。");
-      setTimeout(() => setError(""), 4000);
+      showError("エリア名と、少なくとも1つの企業URLを入力してください。");
       return;
     }
 
     setLoading(true);
     setError("");
+    setFoundAreaPath("");
 
-    // APIリクエストのシミュレーション（入力値ごとにランダムな結果を返す）
-    setTimeout(() => {
-      // マンションデータの動的生成
-      const c_u = Math.floor(Math.random() * 300) + 150; // 150~450件
-      const c_c = inputs.condoUrl ? Math.floor(Math.random() * 40) + 1 : 0;
-      const c_s = c_u > 0 ? ((c_c / c_u) * 100).toFixed(2) : 0;
+    try {
+      // Step 1: エリア名 → SUUMOパス検索
+      setLoadingStep("エリアパスを検索中...");
+      const areaRes = await fetch(`${API_BASE_URL}/search-area`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ area_name: inputs.areaName })
+      });
 
-      // 戸建てデータの動的生成
-      const h_u = Math.floor(Math.random() * 400) + 200; // 200~600件
-      const h_c = inputs.houseUrl ? Math.floor(Math.random() * 25) + 1 : 0;
-      const h_s = h_u > 0 ? ((h_c / h_u) * 100).toFixed(2) : 0;
+      if (!areaRes.ok) {
+        const err = await areaRes.json().catch(() => ({}));
+        throw new Error(err.error || 'エリア検索に失敗しました');
+      }
 
-      // セグメント分割のヘルパー関数
-      const splitSegments = (totalShare, totalCount) => {
-        if (totalCount === 0) return [
-          { label: "0-1500万", share: 0, count: 0 },
-          { label: "1501-3000万", share: 0, count: 0 },
-          { label: "3001万-", share: 0, count: 0 }
-        ];
-        const s1_c = Math.floor(totalCount * 0.4);
-        const s2_c = Math.floor(totalCount * 0.5);
-        const s3_c = totalCount - s1_c - s2_c;
-        return [
-          { label: "0-1500万", share: (totalShare * 0.4).toFixed(1), count: s1_c },
-          { label: "1501-3000万", share: (totalShare * 0.5).toFixed(1), count: s2_c },
-          { label: "3001万-", share: (totalShare * 0.1).toFixed(1), count: s3_c }
-        ];
-      };
+      const areaData = await areaRes.json();
+      const areaPath = areaData.path;
+      setFoundAreaPath(areaPath);
+
+      // Step 2: スクレイピング＆分析
+      setLoadingStep("SUUMOをスクレイピング中（数十秒かかる場合があります）...");
+      const analyzeRes = await fetch(`${API_BASE_URL}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          area_path: areaPath,
+          condo_url: inputs.condoUrl,
+          house_url: inputs.houseUrl
+        })
+      });
+
+      if (!analyzeRes.ok) {
+        const err = await analyzeRes.json().catch(() => ({}));
+        throw new Error(err.error || '分析リクエストに失敗しました');
+      }
+
+      const result = await analyzeRes.json();
+
+      // バックエンドのセグメント形式 → 配列形式に変換
+      const toSegmentArray = (segments) =>
+        ["0-1500万", "1501-3000万", "3001万-"].map(label => ({
+          label,
+          share: segments?.[label]?.share ?? 0,
+          count: segments?.[label]?.client ?? 0
+        }));
 
       setData({
         condo: {
-          totalUnique: c_u,
-          clientCount: c_c,
-          share: parseFloat(c_s),
-          segments: splitSegments(parseFloat(c_s), c_c)
+          totalUnique: result.condo.area_total,
+          clientCount: result.condo.client_total,
+          share: result.condo.share,
+          segments: toSegmentArray(result.condo.segments)
         },
         house: {
-          totalUnique: h_u,
-          clientCount: h_c,
-          share: parseFloat(h_s),
-          segments: splitSegments(parseFloat(h_s), h_c)
+          totalUnique: result.house.area_total,
+          clientCount: result.house.client_total,
+          share: result.house.share,
+          segments: toSegmentArray(result.house.segments)
         }
       });
-      setLoading(false);
+
       setAnalyzed(true);
-    }, 1500);
+    } catch (err) {
+      showError(err.message || '分析中にエラーが発生しました');
+    } finally {
+      setLoading(false);
+      setLoadingStep("");
+    }
   };
 
   const handleClear = () => {
     setInputs({ areaName: "", condoUrl: "", houseUrl: "" });
     setAnalyzed(false);
+    setFoundAreaPath("");
     setData(null);
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] p-6 lg:p-10 font-sans">
       <div className="max-w-6xl mx-auto">
-        
+
         {/* Header */}
         <header className="flex items-center justify-between mb-10">
           <div>
@@ -255,9 +252,9 @@ export default function App() {
               </div>
               <h1 className="text-xl font-black text-slate-800 tracking-tight">SUUMOマーケットシェア分析</h1>
             </div>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest ml-1">Dynamic Analysis Dashboard</p>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest ml-1">Real-time Analysis Dashboard</p>
           </div>
-          <button 
+          <button
             onClick={handleClear}
             className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 flex items-center gap-1.5 transition-colors shadow-sm"
           >
@@ -266,69 +263,78 @@ export default function App() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
+
           {/* Settings Panel */}
           <aside className="lg:col-span-4 space-y-6">
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200 relative overflow-hidden">
               <h2 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2 relative z-10">
                 <Search className="w-4 h-4 text-orange-500" /> 分析条件の入力
               </h2>
-              
+
               <div className="space-y-4 relative z-10">
+                {/* エリア名 */}
                 <div>
                   <label className="text-[10px] font-black text-slate-500 mb-1.5 block uppercase tracking-wider">エリア名</label>
                   <div className="relative">
                     <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-slate-300" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:ring-2 focus:ring-orange-500 bg-white transition-all outline-none"
                       placeholder="例：兵庫県西宮市"
                       value={inputs.areaName}
-                      onChange={e => setInputs({...inputs, areaName: e.target.value})}
+                      onChange={e => setInputs({ ...inputs, areaName: e.target.value })}
                     />
                   </div>
                   <div className="mt-2 flex items-center justify-between px-1">
                     <span className="text-[9px] font-bold text-slate-400">特定パス（SUUMO）</span>
-                    <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${inputs.areaName ? 'text-orange-600 bg-orange-50' : 'text-slate-300 bg-slate-100'}`}>
-                      {estimatedPath}
+                    <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
+                      foundAreaPath
+                        ? 'text-green-600 bg-green-50'
+                        : inputs.areaName
+                          ? 'text-orange-400 bg-orange-50'
+                          : 'text-slate-300 bg-slate-100'
+                    }`}>
+                      {foundAreaPath || (inputs.areaName ? '検索前' : '未入力')}
                     </span>
                   </div>
                 </div>
 
+                {/* 企業URL（マンション） */}
                 <div>
                   <label className="text-[10px] font-black text-blue-500 mb-1.5 block uppercase tracking-wider">企業URL（中古マンション）</label>
-                  <textarea 
+                  <textarea
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] h-20 font-mono focus:ring-2 focus:ring-blue-500 bg-white transition-all outline-none resize-none"
                     placeholder="例：https://suumo.jp/chukomansion/..."
                     value={inputs.condoUrl}
-                    onChange={e => setInputs({...inputs, condoUrl: e.target.value})}
+                    onChange={e => setInputs({ ...inputs, condoUrl: e.target.value })}
                   />
                 </div>
 
+                {/* 企業URL（戸建て） */}
                 <div>
                   <label className="text-[10px] font-black text-emerald-500 mb-1.5 block uppercase tracking-wider">企業URL（中古戸建て）</label>
-                  <textarea 
+                  <textarea
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-[10px] h-20 font-mono focus:ring-2 focus:ring-emerald-500 bg-white transition-all outline-none resize-none"
                     placeholder="例：https://suumo.jp/chukoikkodate/..."
                     value={inputs.houseUrl}
-                    onChange={e => setInputs({...inputs, houseUrl: e.target.value})}
+                    onChange={e => setInputs({ ...inputs, houseUrl: e.target.value })}
                   />
                 </div>
 
                 {error && (
-                  <div className="bg-red-50 text-red-600 text-[10px] font-bold p-3 rounded-xl flex items-center gap-2 animate-in fade-in zoom-in-95 border border-red-100">
+                  <div className="bg-red-50 text-red-600 text-[10px] font-bold p-3 rounded-xl flex items-center gap-2 border border-red-100">
                     <XCircle className="w-4 h-4 shrink-0" />
                     {error}
                   </div>
                 )}
 
-                <button 
+                <button
                   onClick={handleRun}
                   disabled={loading}
                   className={`w-full py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 transition-all ${
-                    loading 
-                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                    : 'bg-slate-900 text-white hover:bg-orange-600 active:scale-95 shadow-orange-100'
+                    loading
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-900 text-white hover:bg-orange-600 active:scale-95 shadow-orange-100'
                   }`}
                 >
                   {loading ? (
@@ -355,26 +361,39 @@ export default function App() {
                 <p className="text-[11px] mt-2 font-medium">サイドバーにエリア名と各URLを入力してください</p>
               </div>
             ) : loading ? (
-              <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-white rounded-[40px] shadow-sm animate-pulse border border-slate-100">
-                <div className="relative">
+              <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-white rounded-[40px] shadow-sm border border-slate-100">
+                <div className="relative mb-6">
                   <div className="w-16 h-16 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin"></div>
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-2 h-2 bg-orange-500 rounded-full animate-ping"></div>
                   </div>
                 </div>
-                <p className="text-xs text-slate-400 font-black mt-6 tracking-widest uppercase">Scraping Data from SUUMO...</p>
-                <p className="text-[10px] text-slate-400 mt-2">入力されたURLにアクセスし、名寄せ処理を実行しています</p>
+                <p className="text-xs text-slate-700 font-black tracking-widest uppercase">Scraping SUUMO...</p>
+                <p className="text-[10px] text-slate-400 mt-2 text-center max-w-xs">{loadingStep}</p>
+                {foundAreaPath && (
+                  <div className="mt-4 flex items-center gap-2 text-[10px] text-green-600 bg-green-50 px-3 py-1.5 rounded-lg">
+                    <CheckCircle2 className="w-3 h-3" />
+                    パス特定済：{foundAreaPath}
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
-                
-                {/* 検索条件のフィードバック（都度検索している証拠） */}
+              <div className="space-y-6">
+
+                {/* 分析完了バナー */}
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                     <div>
                       <p className="text-[10px] font-bold text-slate-400">分析完了：対象エリア</p>
-                      <p className="text-sm font-black text-slate-700">{inputs.areaName}</p>
+                      <p className="text-sm font-black text-slate-700">
+                        {inputs.areaName}
+                        {foundAreaPath && (
+                          <span className="ml-2 text-[10px] font-mono text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">
+                            {foundAreaPath}
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right flex flex-col gap-1">
@@ -394,20 +413,18 @@ export default function App() {
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <SummaryCard title="中古マンション" data={data.condo} icon={<Building2 />} color="blue" />
-                  <SummaryCard title="中古戸建て" data={data.house} icon={<Home />} color="emerald" />
+                  <SummaryCard title="中古戸建て"     data={data.house} icon={<Home />}      color="emerald" />
                 </div>
 
                 {/* Market Position */}
                 <section className="bg-white rounded-[40px] p-8 shadow-sm border border-slate-100">
-                  <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                      <PieChart className="text-orange-500 w-5 h-5" />
-                      市場内ポジション（ランチェスター）
-                    </h3>
-                  </div>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2 mb-8">
+                    <PieChart className="text-orange-500 w-5 h-5" />
+                    市場内ポジション（ランチェスター）
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                     <ShareGauge title="マンション部門" share={data.condo.share} />
-                    <ShareGauge title="戸建て部門" share={data.house.share} />
+                    <ShareGauge title="戸建て部門"     share={data.house.share} />
                   </div>
                 </section>
 
